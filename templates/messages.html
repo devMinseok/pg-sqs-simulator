@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}메시지 송수신{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="panel-header">
+        <div>
+            <h2 class="panel-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                메시지 송수신 및 처리 시뮬레이션
+            </h2>
+            <p class="panel-desc">
+                Producer의 메시지 발행(<code>INSERT</code>), Consumer 워커의 가용 메시지 수신(중첩 하위질의 <code>NOT EXISTS</code>), 완료된 메시지 삭제(<code>DELETE</code>)를 실행합니다.
+            </p>
+        </div>
+    </div>
+
+    <!-- 2단 그리드: 좌측 메시지 발행, 우측 메시지 수신 -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px;">
+        
+        <!-- [1] 메시지 발행 폼 (Producer -> SendMessage) -->
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 18px;">
+            <h3 style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                <span style="background: #e0f2fe; color: #0284c7; padding: 2px 6px; border-radius: 4px; font-size: 11px;">PRODUCER</span>
+                메시지 발행 (SendMessage &mdash; INSERT)
+            </h3>
+            <form method="post" action="{{ url_for('send_message') }}">
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label for="send_queue_id">발행 대상 큐 *</label>
+                    <select name="queue_id" id="send_queue_id" class="form-control" required>
+                        <option value="">큐를 선택하세요...</option>
+                        {% for q in queues %}
+                            <option value="{{ q.queue_id }}" {% if selected_queue_id == q.queue_id %}selected{% endif %}>
+                                {{ q.queue_name }} (ID: {{ q.queue_id }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="message_body">메시지 본문 (JSON 또는 텍스트) *</label>
+                    <textarea name="message_body" id="message_body" class="form-control" placeholder='{"event": "ORDER_CREATED", "order_id": "ORD-2026"}' required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">메시지 발행하기</button>
+            </form>
+        </div>
+
+        <!-- [2] 가용 메시지 수신 폼 (Consumer -> ReceiveMessage) -->
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 18px;">
+            <h3 style="font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                <span style="background: #fef3c7; color: #d97706; padding: 2px 6px; border-radius: 4px; font-size: 11px;">CONSUMER</span>
+                메시지 폴링 및 수신 (ReceiveMessage &mdash; Nested Subquery)
+            </h3>
+            <p style="font-size: 11.5px; color: #64748b; margin-bottom: 12px;">
+                <code>NOT EXISTS (SELECT 1 FROM message_receipt ...)</code> 조건을 통해 아직 어떤 워커에게도 할당되지 않은 가용 메시지 1건을 조회하여 영수증을 발행합니다.
+            </p>
+            <form method="post" action="{{ url_for('receive_message') }}">
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label for="recv_queue_id">수신 대상 큐 *</label>
+                    <select name="queue_id" id="recv_queue_id" class="form-control" required>
+                        <option value="">폴링할 큐를 선택하세요...</option>
+                        {% for q in queues %}
+                            <option value="{{ q.queue_id }}" {% if selected_queue_id == q.queue_id %}selected{% endif %}>
+                                {{ q.queue_name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label for="consumer_id">수신할 워커 (Active Consumer) *</label>
+                    <select name="consumer_id" id="consumer_id" class="form-control" required>
+                        <option value="">활성 워커를 선택하세요...</option>
+                        {% for c in active_consumers %}
+                            <option value="{{ c.consumer_id }}">
+                                {{ c.consumer_name }} (ID: {{ c.consumer_id }})
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-secondary" style="width: 100%; font-weight: 700;">메시지 폴링 & 수신하기</button>
+            </form>
+        </div>
+
+    </div>
+
+    <!-- 큐 필터 바 (WHERE 조건 전달) -->
+    <form method="get" action="{{ url_for('view_messages') }}" class="filter-bar">
+        <label for="filter_queue_id" style="font-weight: 600; font-size: 13px;">큐별 메시지 필터링:</label>
+        <select name="queue_id" id="filter_queue_id" class="form-control" style="width: 250px;" onchange="this.form.submit()">
+            <option value="">전체 큐 (모든 메시지 보기)</option>
+            {% for q in queues %}
+                <option value="{{ q.queue_id }}" {% if selected_queue_id == q.queue_id %}selected{% endif %}>
+                    {{ q.queue_name }}
+                </option>
+            {% endfor %}
+        </select>
+        {% if selected_queue_id %}
+            <a href="{{ url_for('view_messages') }}" class="btn btn-secondary btn-sm">필터 초기화</a>
+        {% endif %}
+    </form>
+
+    <!-- 메시지 목록 테이블 -->
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th style="width: 50px;">ID</th>
+                    <th style="width: 170px;">소속 큐</th>
+                    <th>메시지 본문 (Payload)</th>
+                    <th style="width: 110px;">상태</th>
+                    <th style="width: 170px;">수신 정보 (In-Flight 영수증)</th>
+                    <th style="width: 140px;">발행 일시</th>
+                    <th style="width: 110px;">관리</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if messages %}
+                    {% for m in messages %}
+                        <tr>
+                            <td><strong>{{ m.message_id }}</strong></td>
+                            <td><span style="font-size: 12px; font-weight: 600; color: #1e293b;">{{ m.queue_name }}</span></td>
+                            <td>
+                                <pre style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 6px 10px; border-radius: 4px; font-family: monospace; font-size: 12px; white-space: pre-wrap; word-break: break-all; margin: 0;">{{ m.message_body }}</pre>
+                            </td>
+                            <td>
+                                {% if m.status == 'AVAILABLE' %}
+                                    <span class="badge-tag badge-available">AVAILABLE (대기)</span>
+                                {% else %}
+                                    <span class="badge-tag badge-inflight">IN-FLIGHT (처리중)</span>
+                                {% endif %}
+                            </td>
+                            <td style="font-size: 11px;">
+                                {% if m.receipt_id %}
+                                    <div><strong>수신 워커:</strong> {{ m.consumer_name }}</div>
+                                    <div style="color: #64748b;">영수증 #{{ m.receipt_id }}</div>
+                                {% else %}
+                                    <span style="color: #94a3b8;">&mdash; (미수신)</span>
+                                {% endif %}
+                            </td>
+                            <td style="font-size: 11px; color: #64748b;">{{ m.created_at }}</td>
+                            <td>
+                                <form method="post" action="{{ url_for('ack_message', message_id=m.message_id) }}" onsubmit="return confirm('메시지를 처리 완료(Ack)하고 큐에서 완전히 삭제하시겠습니까?');">
+                                    <input type="hidden" name="queue_id" value="{{ selected_queue_id or '' }}">
+                                    <button type="submit" class="btn btn-danger btn-sm" title="DeleteMessage (DELETE)">처리완료 (Ack)</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 32px; color: #94a3b8;">
+                            큐에 보관된 메시지가 없습니다. 상단 폼을 통해 새 메시지를 발행해 보세요.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

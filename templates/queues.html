@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block title %}큐 & 워커 관리{% endblock %}
+
+{% block content %}
+<!-- ============================================================
+     섹션 1: 큐(Queues) 관리
+     - Natural Join을 활용한 큐 목록 및 정책 조회
+     - GET 폼을 통한 WHERE 조건 필터링
+     - POST 폼을 통한 큐 생성(INSERT), 수정(UPDATE), 삭제(DELETE)
+     ============================================================ -->
+<div class="panel">
+    <div class="panel-header">
+        <div>
+            <h2 class="panel-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="4" width="20" height="16" rx="2"/>
+                    <path d="M7 15h10M7 9h10"/>
+                </svg>
+                Amazon SQS 큐 목록
+            </h2>
+            <p class="panel-desc">
+                Natural Join(<code>message_queue NATURAL JOIN queue_type</code>)을 통해 큐 인스턴스와 유형 정책을 결합 조회합니다.
+            </p>
+        </div>
+        <a href="#create-queue-section" class="btn btn-primary btn-sm">+ 큐 생성</a>
+    </div>
+
+    <!-- GET 필터 바 (WHERE 조건 <form> 전달) -->
+    <form method="get" action="{{ url_for('list_queues') }}" class="filter-bar">
+        <label for="type_id" style="font-weight: 600; font-size: 13px;">큐 유형으로 필터링:</label>
+        <select name="type_id" id="type_id" class="form-control" style="width: 220px;" onchange="this.form.submit()">
+            <option value="">전체 유형 (All Types)</option>
+            {% for t in queue_types %}
+                <option value="{{ t.type_id }}" {% if selected_type_id == t.type_id %}selected{% endif %}>
+                    {{ t.type_name }}
+                </option>
+            {% endfor %}
+        </select>
+        {% if selected_type_id %}
+            <a href="{{ url_for('list_queues') }}" class="btn btn-secondary btn-sm">필터 초기화</a>
+        {% endif %}
+    </form>
+
+    <!-- 큐 목록 테이블 -->
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th style="width: 60px;">ID</th>
+                    <th>큐 이름</th>
+                    <th>유형 (Natural Join)</th>
+                    <th>최대 크기</th>
+                    <th>보관 기간</th>
+                    <th>가시성 타임아웃</th>
+                    <th>최대 수신 횟수</th>
+                    <th>생성 일시</th>
+                    <th style="width: 140px;">관리</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if queues %}
+                    {% for q in queues %}
+                        <tr>
+                            <td><strong>{{ q.queue_id }}</strong></td>
+                            <td>
+                                <a href="{{ url_for('view_messages', queue_id=q.queue_id) }}" style="color: #0073bb; font-weight: 600; text-decoration: none;">
+                                    {{ q.queue_name }}
+                                </a>
+                            </td>
+                            <td>
+                                {% if 'FIFO' in q.type_name %}
+                                    <span class="badge-tag badge-fifo">{{ q.type_name }}</span>
+                                {% else %}
+                                    <span class="badge-tag badge-standard">{{ q.type_name }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ q.max_message_size_kb }} KB</td>
+                            <td>{{ q.retention_seconds // 86400 }}일</td>
+                            <td>
+                                <form method="post" action="{{ url_for('update_queue', queue_id=q.queue_id) }}" style="display: flex; align-items: center; gap: 4px;">
+                                    <input type="number" name="visibility_timeout" value="{{ q.visibility_timeout }}" class="form-control" style="width: 65px; padding: 3px 6px;" min="1" max="43200">
+                                    <input type="hidden" name="max_receive_count" value="{{ q.max_receive_count }}">
+                                    <button type="submit" class="btn btn-secondary btn-sm" title="가시성 타임아웃 UPDATE">수정</button>
+                                </form>
+                            </td>
+                            <td>{{ q.max_receive_count }}회</td>
+                            <td style="font-size: 11px; color: #64748b;">{{ q.created_at }}</td>
+                            <td>
+                                <form method="post" action="{{ url_for('delete_queue', queue_id=q.queue_id) }}" onsubmit="return confirm('정말 이 큐와 소속된 메시지를 모두 삭제하시겠습니까?');">
+                                    <button type="submit" class="btn btn-danger btn-sm">삭제</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="9" style="text-align: center; padding: 24px; color: #94a3b8;">
+                            조회 조건에 해당하는 큐가 없습니다.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 신규 큐 생성 폼 (INSERT) -->
+<div id="create-queue-section" class="panel">
+    <div class="panel-header">
+        <h3 class="panel-title">+ 신규 큐 생성 (INSERT)</h3>
+        <span style="font-size: 12px; color: #64748b;">PostgreSQL <code>message_queue</code> 테이블에 신규 행 추가</span>
+    </div>
+    <form method="post" action="{{ url_for('create_queue') }}">
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="queue_name">큐 이름 *</label>
+                <input type="text" name="queue_name" id="queue_name" class="form-control" placeholder="예: user-events-queue" required>
+            </div>
+            <div class="form-group">
+                <label for="new_type_id">큐 유형 *</label>
+                <select name="type_id" id="new_type_id" class="form-control" required>
+                    {% for t in queue_types %}
+                        <option value="{{ t.type_id }}">{{ t.type_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="visibility_timeout">기본 가시성 타임아웃 (초 단위)</label>
+                <input type="number" name="visibility_timeout" id="visibility_timeout" class="form-control" value="30" min="1" max="43200">
+            </div>
+            <div class="form-group">
+                <label for="max_receive_count">최대 수신 재시도 횟수</label>
+                <input type="number" name="max_receive_count" id="max_receive_count" class="form-control" value="5" min="1" max="1000">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">큐 생성하기</button>
+    </form>
+</div>
+
+
+<!-- ============================================================
+     섹션 2: 컨슈머 워커(Consumer Workers) 관리
+     - 워커 등록(INSERT), 상태 변경(UPDATE), 삭제(DELETE)
+     ============================================================ -->
+<div class="panel">
+    <div class="panel-header">
+        <div>
+            <h2 class="panel-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                등록된 Consumer 워커 관리
+            </h2>
+            <p class="panel-desc">
+                메시지를 큐에서 수신하여 소비하는 워커 프로세스를 관리합니다 (<code>consumer</code> 테이블).
+            </p>
+        </div>
+    </div>
+
+    <!-- 워커 등록 폼 (INSERT) -->
+    <form method="post" action="{{ url_for('create_consumer') }}" style="background: #f8fafc; padding: 14px; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 16px;">
+        <div style="font-weight: 600; font-size: 13px; margin-bottom: 8px;">+ 신규 워커 등록 (INSERT)</div>
+        <div class="form-grid" style="grid-template-columns: 2fr 2fr 1fr auto; align-items: flex-end;">
+            <div class="form-group">
+                <label for="consumer_name">워커 이름 *</label>
+                <input type="text" name="consumer_name" id="consumer_name" class="form-control" placeholder="예: Worker-Node-04" required>
+            </div>
+            <div class="form-group">
+                <label for="ip_address">IP 주소 *</label>
+                <input type="text" name="ip_address" id="ip_address" class="form-control" placeholder="예: 192.168.1.10" required>
+            </div>
+            <div class="form-group">
+                <label for="status">초기 상태</label>
+                <select name="status" id="status" class="form-control">
+                    <option value="ACTIVE">ACTIVE (활성)</option>
+                    <option value="INACTIVE">INACTIVE (비활성)</option>
+                </select>
+            </div>
+            <div>
+                <button type="submit" class="btn btn-secondary">워커 등록</button>
+            </div>
+        </div>
+    </form>
+
+    <!-- 워커 목록 테이블 -->
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th style="width: 60px;">ID</th>
+                    <th>워커 이름</th>
+                    <th>IP 주소</th>
+                    <th>동작 상태 (UPDATE 토글)</th>
+                    <th>등록 일시</th>
+                    <th style="width: 100px;">관리</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if consumers %}
+                    {% for c in consumers %}
+                        <tr>
+                            <td>{{ c.consumer_id }}</td>
+                            <td><strong>{{ c.consumer_name }}</strong></td>
+                            <td><code>{{ c.ip_address }}</code></td>
+                            <td>
+                                <form method="post" action="{{ url_for('toggle_consumer_status', consumer_id=c.consumer_id) }}" style="display: inline-flex; align-items: center; gap: 6px;">
+                                    {% if c.status == 'ACTIVE' %}
+                                        <span class="badge-tag badge-active">ACTIVE</span>
+                                        <input type="hidden" name="status" value="INACTIVE">
+                                        <button type="submit" class="btn btn-secondary btn-sm">비활성화</button>
+                                    {% else %}
+                                        <span class="badge-tag badge-inactive">INACTIVE</span>
+                                        <input type="hidden" name="status" value="ACTIVE">
+                                        <button type="submit" class="btn btn-secondary btn-sm">활성화</button>
+                                    {% endif %}
+                                </form>
+                            </td>
+                            <td style="font-size: 11px; color: #64748b;">{{ c.registered_at }}</td>
+                            <td>
+                                <form method="post" action="{{ url_for('delete_consumer', consumer_id=c.consumer_id) }}" onsubmit="return confirm('정말 이 워커를 삭제하시겠습니까?');">
+                                    <button type="submit" class="btn btn-danger btn-sm">삭제</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 18px; color: #94a3b8;">
+                            등록된 워커가 없습니다.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

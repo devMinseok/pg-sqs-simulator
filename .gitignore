@@ -1,0 +1,85 @@
+중간과제/
+
+# ==========================================
+# Environment Variables & Secrets (환경변수 및 비밀값)
+# ==========================================
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# Python & Bytecode
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ==========================================
+# Virtual Environments (가상환경)
+# ==========================================
+venv/
+.venv/
+env/
+.env/
+ENV/
+env.bak/
+venv.bak/
+
+# ==========================================
+# Operating System (macOS, Windows, Linux)
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ==========================================
+# IDE & Editors (VS Code, JetBrains, etc.)
+# ==========================================
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+*.swp
+*.swo
+
+# ==========================================
+# Logs, Testing & Coverage
+# ==========================================
+*.log
+*.log.*
+logs/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ==========================================
+# Database & Temporary Dumps
+# ==========================================
+*.sqlite3
+*.dump
+*.backup
+tmp/
+temp/

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Web SQS 콘솔{% endblock %} - Amazon SQS 시뮬레이터</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- AWS 상단 네비게이션 바 -->
+    <header class="aws-header">
+        <div style="display: flex; align-items: center; gap: 30px;">
+            <a href="{{ url_for('list_queues') }}" class="aws-logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="4" width="20" height="16" rx="2"/>
+                    <path d="M7 15h10M7 9h10"/>
+                </svg>
+                Amazon SQS <span class="badge">시뮬레이터</span>
+            </a>
+            <nav class="aws-nav-links">
+                <a href="{{ url_for('list_queues') }}" class="aws-nav-link {% if request.endpoint == 'list_queues' %}active{% endif %}">
+                    큐 & 워커 관리
+                </a>
+                <a href="{{ url_for('view_messages') }}" class="aws-nav-link {% if request.endpoint == 'view_messages' %}active{% endif %}">
+                    메시지 송수신
+                </a>
+                <a href="{{ url_for('view_metrics') }}" class="aws-nav-link {% if request.endpoint == 'view_metrics' %}active{% endif %}">
+                    CloudWatch 메트릭
+                </a>
+            </nav>
+        </div>
+        <div class="aws-header-right">
+            <div class="status-indicator">
+                <span class="status-dot {% if db_healthy %}online{% endif %}"></span>
+                <span>PostgreSQL: {% if db_healthy %}연결됨{% else %}연결 끊김{% endif %}</span>
+            </div>
+            <span style="color: #64748b;">|</span>
+            <span>리전: <strong>ap-northeast-2 (서울)</strong></span>
+        </div>
+    </header>
+
+    <!-- 메인 컨테이너 -->
+    <main class="container">
+        <!-- 알림 메시지 (Flash) -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-container">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">
+                            <span>{{ message }}</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="aws-footer">
+        <p><strong>pg-sqs-simulator</strong> &mdash; PostgreSQL 기반 Amazon SQS 아키텍처 모델링 및 Flask 웹 콘솔</p>
+        <p style="margin-top: 4px; color: #94a3b8;">데이터베이스 텀프로젝트 | 구현 기술: PostgreSQL 16 · Python · Flask · Psycopg</p>
+    </footer>
+</body>
+</html>
